@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Barebones Ecommerce Frontend</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      line-height: 1.5;
+    }
+
+    .container {
+      width: min(1200px, 92%);
+      margin: 0 auto;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(255, 255, 255, 0.95);
+      border-bottom: 1px solid #e2e8f0;
+      backdrop-filter: blur(8px);
+    }
+
+    .header-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      padding: 18px 0;
+      flex-wrap: wrap;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    h1 {
+      font-size: 30px;
+    }
+
+    .search-cart {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    input, textarea, button {
+      font: inherit;
+    }
+
+    .search-input, .text-input, textarea {
+      border: 1px solid #cbd5e1;
+      background: white;
+      border-radius: 14px;
+      padding: 12px 14px;
+      width: 100%;
+    }
+
+    .search-input {
+      min-width: 260px;
+    }
+
+    button {
+      border: none;
+      border-radius: 14px;
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+
+    .btn-primary {
+      background: #0f172a;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.92;
+    }
+
+    .btn-secondary {
+      background: white;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+    }
+
+    .btn-secondary.active,
+    .btn-secondary:hover {
+      background: #e2e8f0;
+    }
+
+    main {
+      padding: 32px 0;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 28px;
+    }
+
+    .hero,
+    .panel,
+    .product-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 24px;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+    }
+
+    .hero {
+      padding: 32px;
+      margin-bottom: 28px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #e2e8f0;
+      color: #0f172a;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    .hero h2 {
+      font-size: 42px;
+      line-height: 1.1;
+      margin-bottom: 14px;
+    }
+
+    .hero p {
+      color: #475569;
+      margin-bottom: 18px;
+      max-width: 680px;
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .panel {
+      padding: 22px;
+    }
+
+    .panel h3 {
+      margin-bottom: 16px;
+      font-size: 20px;
+    }
+
+    .summary-list {
+      display: grid;
+      gap: 12px;
+      color: #475569;
+      font-size: 14px;
+    }
+
+    .summary-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .summary-item strong {
+      color: #0f172a;
+    }
+
+    .summary-note {
+      background: #f1f5f9;
+      padding: 14px;
+      border-radius: 16px;
+      margin-top: 8px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .section-head h3 {
+      font-size: 24px;
+    }
+
+    .section-head p {
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .product-card {
+      overflow: hidden;
+    }
+
+    .product-card img {
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      display: block;
+      background: #e2e8f0;
+    }
+
+    .product-body {
+      padding: 18px;
+    }
+
+    .product-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .category {
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    .product-name {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .price {
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .description {
+      color: #475569;
+      font-size: 14px;
+      margin-bottom: 14px;
+    }
+
+    .product-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .rating {
+      color: #475569;
+      font-size: 14px;
+    }
+
+    .sidebar {
+      display: grid;
+      gap: 20px;
+      align-content: start;
+    }
+
+    .cart-empty {
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    .cart-list {
+      display: grid;
+      gap: 14px;
+    }
+
+    .cart-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 14px;
+    }
+
+    .cart-item-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .cart-meta {
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    .qty-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .qty-btn {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border: 1px solid #cbd5e1;
+      background: white;
+      color: #0f172a;
+    }
+
+    .qty-value {
+      width: 28px;
+      text-align: center;
+    }
+
+    .cart-total {
+      border-top: 1px solid #e2e8f0;
+      padding-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      font-weight: 700;
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    @media (max-width: 980px) {
+      .layout,
+      .hero-grid,
+      .product-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      h1 {
+        font-size: 24px;
+      }
+
+      .hero h2 {
+        font-size: 30px;
+      }
+
+      .search-input {
+        min-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container header-inner">
+      <div>
+        <p class="eyebrow">Mock Storefront</p>
+        <h1>Barebones Ecommerce Frontend</h1>
+      </div>
+
+      <div class="search-cart">
+        <input id="searchInput" class="search-input" type="text" placeholder="Search products" />
+        <button class="btn-secondary" id="cartButton">Cart (0)</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="container layout">
+      <section>
+        <div class="hero">
+          <div class="hero-grid">
+            <div>
+              <span class="badge">Client Demo Ready</span>
+              <h2>A simple storefront to mock product requests and buying flows.</h2>
+              <p>
+                Use this starter layout for client reviews, sample catalogs, or lightweight UX walkthroughs.
+                Swap products, branding, and copy to match the brief.
+              </p>
+              <div class="filter-row" id="categoryFilters"></div>
+            </div>
+
+            <div class="panel">
+              <h3>Demo Summary</h3>
+              <div class="summary-list">
+                <div class="summary-item"><span>Products shown</span><strong id="shownCount">0</strong></div>
+                <div class="summary-item"><span>Categories</span><strong id="categoryCount">0</strong></div>
+                <div class="summary-item"><span>Cart items</span><strong id="cartSummaryCount">0</strong></div>
+                <div class="summary-note">
+                  This mockup is intentionally lean: no backend, no checkout integration, and no authentication.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-head">
+          <h3>Featured products</h3>
+          <p id="activeCategoryLabel">All category</p>
+        </div>
+
+        <div class="product-grid" id="productGrid"></div>
+      </section>
+
+      <aside class="sidebar">
+        <div class="panel">
+          <h3>Cart preview</h3>
+          <div id="cartContent"></div>
+        </div>
+
+        <div class="panel">
+          <h3>Client request mock form</h3>
+          <form id="requestForm">
+            <input class="text-input" id="clientName" type="text" placeholder="Client name" />
+            <input class="text-input" id="companyName" type="text" placeholder="Company" />
+            <textarea id="requestText" placeholder="Describe the requested storefront changes or products"></textarea>
+            <button type="submit" class="btn-primary">Capture request</button>
+          </form>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const products = [
+      {
+        id: 1,
+        name: "Minimal Desk Lamp",
+        category: "Home",
+        price: 49,
+        rating: 4.7,
+        image: "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=80",
+        description: "A clean, modern lamp for workspace mockups."
+      },
+      {
+        id: 2,
+        name: "Everyday Sneakers",
+        category: "Fashion",
+        price: 89,
+        rating: 4.5,
+        image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=80",
+        description: "Comfortable casual footwear for storefront demos."
+      },
+      {
+        id: 3,
+        name: "Wireless Headphones",
+        category: "Electronics",
+        price: 129,
+        rating: 4.8,
+        image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=900&q=80",
+        description: "Popular product-card filler for tech brands."
+      },
+      {
+        id: 4,
+        name: "Ceramic Mug Set",
+        category: "Home",
+        price: 34,
+        rating: 4.4,
+        image: "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?auto=format&fit=crop&w=900&q=80",
+        description: "Neutral home goods item for sample requests."
+      },
+      {
+        id: 5,
+        name: "Canvas Backpack",
+        category: "Fashion",
+        price: 74,
+        rating: 4.6,
+        image: "https://images.unsplash.com/photo-1542291026-1534f2c6a1c4?auto=format&fit=crop&w=900&q=80",
+        description: "Useful for lifestyle and travel client mockups."
+      },
+      {
+        id: 6,
+        name: "Smart Watch",
+        category: "Electronics",
+        price: 199,
+        rating: 4.3,
+        image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80",
+        description: "A sleek wearable card for premium product layouts."
+      }
+    ];
+
+    const categories = ["All", "Home", "Fashion", "Electronics"];
+    let selectedCategory = "All";
+    let searchTerm = "";
+    let cart = [];
+
+    const productGrid = document.getElementById("productGrid");
+    const categoryFilters = document.getElementById("categoryFilters");
+    const searchInput = document.getElementById("searchInput");
+    const cartContent = document.getElementById("cartContent");
+    const cartButton = document.getElementById("cartButton");
+    const shownCount = document.getElementById("shownCount");
+    const categoryCount = document.getElementById("categoryCount");
+    const cartSummaryCount = document.getElementById("cartSummaryCount");
+    const activeCategoryLabel = document.getElementById("activeCategoryLabel");
+    const requestForm = document.getElementById("requestForm");
+
+    categoryCount.textContent = categories.length - 1;
+
+    function getFilteredProducts() {
+      return products.filter((product) => {
+        const categoryMatch = selectedCategory === "All" || product.category === selectedCategory;
+        const searchMatch =
+          product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          product.description.toLowerCase().includes(searchTerm.toLowerCase());
+        return categoryMatch && searchMatch;
+      });
+    }
+
+    function getCartCount() {
+      return cart.reduce((sum, item) => sum + item.quantity, 0);
+    }
+
+    function getCartTotal() {
+      return cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    }
+
+    function addToCart(productId) {
+      const product = products.find((item) => item.id === productId);
+      const existing = cart.find((item) => item.id === productId);
+
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        cart.push({ ...product, quantity: 1 });
+      }
+
+      render();
+    }
+
+    function updateQuantity(productId, delta) {
+      cart = cart
+        .map((item) => {
+          if (item.id === productId) {
+            return { ...item, quantity: Math.max(0, item.quantity + delta) };
+          }
+          return item;
+        })
+        .filter((item) => item.quantity > 0);
+
+      render();
+    }
+
+    function renderFilters() {
+      categoryFilters.innerHTML = "";
+
+      categories.forEach((category) => {
+        const button = document.createElement("button");
+        button.className = "btn-secondary" + (selectedCategory === category ? " active" : "");
+        button.textContent = category;
+        button.addEventListener("click", () => {
+          selectedCategory = category;
+          render();
+        });
+        categoryFilters.appendChild(button);
+      });
+    }
+
+    function renderProducts() {
+      const filteredProducts = getFilteredProducts();
+      productGrid.innerHTML = "";
+      shownCount.textContent = filteredProducts.length;
+      activeCategoryLabel.textContent = selectedCategory + " category";
+
+      filteredProducts.forEach((product) => {
+        const card = document.createElement("div");
+        card.className = "product-card";
+        card.innerHTML = `
+          <img src="${product.image}" alt="${product.name}" />
+          <div class="product-body">
+            <div class="product-top">
+              <div>
+                <div class="category">${product.category}</div>
+                <div class="product-name">${product.name}</div>
+              </div>
+              <div class="price">$${product.price}</div>
+            </div>
+            <div class="description">${product.description}</div>
+            <div class="product-bottom">
+              <div class="rating">★ ${product.rating}</div>
+              <button class="btn-primary">Add to cart</button>
+            </div>
+          </div>
+        `;
+
+        card.querySelector("button").addEventListener("click", () => addToCart(product.id));
+        productGrid.appendChild(card);
+      });
+    }
+
+    function renderCart() {
+      const count = getCartCount();
+      const total = getCartTotal();
+      cartButton.textContent = `Cart (${count})`;
+      cartSummaryCount.textContent = count;
+
+      if (cart.length === 0) {
+        cartContent.innerHTML = '<p class="cart-empty">No items yet. Add a few products to demo the flow.</p>';
+        return;
+      }
+
+      cartContent.innerHTML = "";
+      const list = document.createElement("div");
+      list.className = "cart-list";
+
+      cart.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "cart-item";
+        row.innerHTML = `
+          <div class="cart-item-top">
+            <div>
+              <div><strong>${item.name}</strong></div>
+              <div class="cart-meta">$${item.price} each</div>
+            </div>
+            <div><strong>$${item.price * item.quantity}</strong></div>
+          </div>
+          <div class="qty-controls">
+            <button class="qty-btn">-</button>
+            <span class="qty-value">${item.quantity}</span>
+            <button class="qty-btn">+</button>
+          </div>
+        `;
+
+        const buttons = row.querySelectorAll("button");
+        buttons[0].addEventListener("click", () => updateQuantity(item.id, -1));
+        buttons[1].addEventListener("click", () => updateQuantity(item.id, 1));
+        list.appendChild(row);
+      });
+
+      const totalRow = document.createElement("div");
+      totalRow.className = "cart-total";
+      totalRow.innerHTML = `<span>Total</span><span>$${total}</span>`;
+
+      const checkoutButton = document.createElement("button");
+      checkoutButton.className = "btn-primary";
+      checkoutButton.style.width = "100%";
+      checkoutButton.textContent = "Proceed to checkout";
+      checkoutButton.addEventListener("click", () => {
+        alert("This is a mock checkout button. Connect it to your real flow later.");
+      });
+
+      cartContent.appendChild(list);
+      cartContent.appendChild(totalRow);
+      cartContent.appendChild(checkoutButton);
+    }
+
+    function render() {
+      renderFilters();
+      renderProducts();
+      renderCart();
+    }
+
+    searchInput.addEventListener("input", (event) => {
+      searchTerm = event.target.value;
+      renderProducts();
+    });
+
+    requestForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const client = document.getElementById("clientName").value.trim() || "client";
+      const company = document.getElementById("companyName").value.trim() || "N/A";
+      const request = document.getElementById("requestText").value.trim() || "N/A";
+
+      alert(`Mock request captured for ${client}.\n\nCompany: ${company}\nRequest: ${request}`);
+      requestForm.reset();
+    });
+
+    render();
+  </script>
+</body>
+</html>
