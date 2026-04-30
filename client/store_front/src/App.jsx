@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { trackAddToCart, trackRemoveFromCart, initMouseTracking, stopTracking } from "@/lib/telemetry";
+import { trackAddToCart, trackRemoveFromCart, initMouseTracking, initTabTracking, stopTracking, trackNavigateAway } from "@/lib/telemetry";
 
 const PRODUCTS = [
   {
@@ -77,10 +77,26 @@ export default function BarebonesEcommerceFrontend() {
     request: "",
   });
 
-  // Initialize mouse tracking on mount
+  // Initialize mouse and tab tracking on mount
   useEffect(() => {
-    const cleanup = initMouseTracking();
-    return cleanup;
+    const cleanupMouse = initMouseTracking();
+    const cleanupTab = initTabTracking();
+    
+    // Track navigation away on link clicks
+    const handleLinkClick = (e) => {
+      const anchor = e.target.closest('a');
+      if (anchor && anchor.href) {
+        trackNavigateAway(anchor.href);
+      }
+    };
+    
+    document.addEventListener('click', handleLinkClick, { passive: true });
+    
+    return () => {
+      cleanupMouse();
+      cleanupTab();
+      document.removeEventListener('click', handleLinkClick);
+    };
   }, []);
 
   const filteredProducts = useMemo(() => {
@@ -138,9 +154,13 @@ export default function BarebonesEcommerceFrontend() {
   };
 
   const handleCheckout = () => {
+    // Track navigation away to checkout
+    trackNavigateAway('/checkout');
     // Stop all telemetry tracking when proceeding to checkout
     stopTracking();
     console.log("Proceeding to checkout - telemetry stopped");
+    // Close the current tab
+    window.close();
   };
 
   return (

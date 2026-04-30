@@ -127,6 +127,53 @@ export function trackRemoveFromCart(product) {
 }
 
 /**
+ * Record tab enter (user returns to the tab)
+ */
+export function trackTabEnter() {
+  const event = createEvent('tab_enter', {
+    pageTitle: document.title,
+    pageUrl: window.location.href,
+  });
+  addEvent(event);
+}
+
+/**
+ * Record tab leave (user switches away from tab but doesn't close)
+ */
+export function trackTabLeave() {
+  const event = createEvent('tab_leave', {
+    pageTitle: document.title,
+    pageUrl: window.location.href,
+  });
+  addEvent(event);
+}
+
+/**
+ * Record tab close (user closes the browser tab)
+ */
+export function trackTabClose() {
+  const event = createEvent('tab_close', {
+    pageTitle: document.title,
+    pageUrl: window.location.href,
+    finalBufferSize: TELEMETRY_BUFFER.length,
+  });
+  addEvent(event);
+}
+
+/**
+ * Record navigate away from the page (user clicks a link or navigates to another page)
+ */
+export function trackNavigateAway(destinationUrl) {
+  const event = createEvent('navigate_away', {
+    pageTitle: document.title,
+    pageUrl: window.location.href,
+    destinationUrl: destinationUrl,
+    finalBufferSize: TELEMETRY_BUFFER.length,
+  });
+  addEvent(event);
+}
+
+/**
  * Get all telemetry data as JSON string
  */
 export function getTelemetryData() {
@@ -207,15 +254,62 @@ export function isTrackingActive() {
   return isTracking;
 }
 
+/**
+ * Initialize tab visibility tracking
+ * Tracks: tab enter, tab leave, tab close
+ */
+export function initTabTracking() {
+  const handleVisibilityChange = () => {
+    if (document.hidden) {
+      // User left the tab (but may not have closed it)
+      trackTabLeave();
+    } else {
+      // User returned to the tab
+      trackTabEnter();
+    }
+  };
+
+  // Track beforeunload for tab close
+  const handleBeforeUnload = (e) => {
+    trackTabClose();
+    // Send telemetry data before closing
+    const telemetryData = getTelemetryData();
+    // Store in sessionStorage for retrieval after reopen
+    try {
+      sessionStorage.setItem('telemetry_final', telemetryData);
+    } catch (err) {
+      alert("sessionStorage is not available. Telemetry data may not be saved on tab close.");
+    }
+  };
+
+  // Cleanup function
+  const cleanup = () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+  };
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('beforeunload', handleBeforeUnload);
+
+  console.log('[Telemetry] Tab tracking initialized');
+
+  return cleanup;
+}
+
 export default {
   trackMouseMove,
   trackMouseClick,
   trackAddToCart,
   trackRemoveFromCart,
+  trackTabEnter,
+  trackTabLeave,
+  trackTabClose,
+  trackNavigateAway,
   getTelemetryData,
   getTelemetryBuffer,
   clearTelemetry,
   initMouseTracking,
+  initTabTracking,
   stopTracking,
   isTrackingActive,
 };
