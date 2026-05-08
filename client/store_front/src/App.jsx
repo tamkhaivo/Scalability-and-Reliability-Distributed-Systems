@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { trackAddToCart, trackRemoveFromCart, initMouseTracking, initTabTracking, stopTracking, trackNavigateAway } from "@/lib/telemetry";
+import { trackAddToCart, trackRemoveFromCart, initMouseTracking, initTabTracking, stopTracking, trackNavigateAway, configureKinesis, flushNow } from "@/lib/telemetry";
 
 const PRODUCTS = [
   {
@@ -67,6 +67,8 @@ const PRODUCTS = [
 
 const CATEGORIES = ["All", "Home", "Fashion", "Electronics"];
 
+const flushInterval = 5; // 5 seconds default
+
 export default function BarebonesEcommerceFrontend() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [search, setSearch] = useState("");
@@ -77,8 +79,14 @@ export default function BarebonesEcommerceFrontend() {
     request: "",
   });
 
-  // Initialize mouse and tab tracking on mount
+  // Initialize mouse, tab tracking and Kinesis on mount
   useEffect(() => {
+    // Configure AWS Kinesis Data Stream
+    configureKinesis({
+      flushInterval: flushInterval * 1000, // Convert to milliseconds
+      isEnabled: true,
+    });
+    
     const cleanupMouse = initMouseTracking();
     const cleanupTab = initTabTracking();
     
