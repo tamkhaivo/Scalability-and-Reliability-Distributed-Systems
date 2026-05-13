@@ -27,6 +27,7 @@ import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,14 +76,14 @@ public class InitializeEnvironment {
     public static void main(String[] args) {
         logger.info("Starting deployment of Distributed Message Ordering testing environment...");
 
-        try (IamClient iamClient = IamClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             EksClient eksClient = EksClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             KinesisClient kinesisClient = KinesisClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             Ec2Client ec2Client = Ec2Client.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             S3Client s3Client = S3Client.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             CognitoIdentityClient cognitoClient = CognitoIdentityClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             StsClient stsClient = StsClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             DynamoDbClient dynamoDbClient = DynamoDbClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build()) {
+        try (IamClient iamClient = IamClient.builder().region(Region.AWS_GLOBAL).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             EksClient eksClient = EksClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             KinesisClient kinesisClient = KinesisClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             Ec2Client ec2Client = Ec2Client.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             S3Client s3Client = S3Client.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             CognitoIdentityClient cognitoClient = CognitoIdentityClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             StsClient stsClient = StsClient.builder().region(Region.AWS_GLOBAL).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             DynamoDbClient dynamoDbClient = DynamoDbClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build()) {
 
             logger.info("AWS Clients initialized successfully.");
 
@@ -134,11 +135,11 @@ public class InitializeEnvironment {
             logger.info("Deployment script execution completed. Please check AWS Console for resource provisioning status.");
 
         } catch (RetryExecutor.RetryExhaustedException e) {
-            logger.error("Rollout FAILED after exhausting all retries. Initiating full environment teardown...", e);
+            logger.error("Rollout FAILED after exhausting all retries. Error: {}", e.getMessage(), e);
             TeardownEnvironment.run();
             System.exit(1);
         } catch (Exception e) {
-            logger.error("Unexpected error during environment initialization. Initiating full environment teardown...", e);
+            logger.error("Unexpected error during environment initialization. Error: {}", e.getMessage(), e);
             TeardownEnvironment.run();
             System.exit(1);
         }
@@ -368,7 +369,7 @@ public class InitializeEnvironment {
                     .name(CLUSTER_NAME)
                     .roleArn(clusterRoleArn)
                     .resourcesVpcConfig(vpcConfig)
-                    .version("1.35")
+                    .version("1.31")
                     .accessConfig(CreateAccessConfigRequest.builder()
                             .authenticationMode(AuthenticationMode.API)
                             .bootstrapClusterCreatorAdminPermissions(true)

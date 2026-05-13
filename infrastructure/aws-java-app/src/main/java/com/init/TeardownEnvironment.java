@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,14 +70,14 @@ public class TeardownEnvironment {
     public static boolean run() {
         boolean allSucceeded = true;
 
-        try (Ec2Client ec2Client = Ec2Client.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             EksClient eksClient = EksClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             KinesisClient kinesisClient = KinesisClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             IamClient iamClient = IamClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             S3Client s3Client = S3Client.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             CognitoIdentityClient cognitoClient = CognitoIdentityClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             StsClient stsClient = StsClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build();
-             DynamoDbClient dynamoDbClient = DynamoDbClient.builder().credentialsProvider(ProfileCredentialsProvider.create()).build()) {
+        try (Ec2Client ec2Client = Ec2Client.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             EksClient eksClient = EksClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             KinesisClient kinesisClient = KinesisClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             IamClient iamClient = IamClient.builder().region(Region.AWS_GLOBAL).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             S3Client s3Client = S3Client.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             CognitoIdentityClient cognitoClient = CognitoIdentityClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             StsClient stsClient = StsClient.builder().region(Region.AWS_GLOBAL).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             DynamoDbClient dynamoDbClient = DynamoDbClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build()) {
 
             logger.info("AWS Clients initialized for teardown.");
 
