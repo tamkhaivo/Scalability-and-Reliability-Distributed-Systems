@@ -14,8 +14,8 @@ let isTracking = false;
 
 // AWS Kinesis Configuration
 let kinesisConfig = {
-  region: 'us-east-1',
-  streamName: 'telemetry-events-stream',
+  region: 'us-east-2',
+  streamName: 'UserMetricsStream',
   flushInterval: 5000, // Default 5 seconds
   isEnabled: false,
 };
@@ -39,19 +39,19 @@ export async function configureKinesis(config) {
     streamName: streamInfo.streamName,
     ...config,
   };
-  
+
   if (kinesisConfig.isEnabled && !flushTimer) {
     kinesisClient = createKinesisClient();
-	// Verify connection by describing the stream
-	const command = new DescribeStreamCommand({ StreamName: streamInfo.streamName });
-	const response = await kinesisClient.send(command);
-	console.log("Connected to stream:", response.StreamDescription.StreamName);
+    // Verify connection by describing the stream
+    const command = new DescribeStreamCommand({ StreamName: streamInfo.streamName });
+    const response = await kinesisClient.send(command);
+    console.log("Connected to stream:", response.StreamDescription.StreamName);
     startFlushTimer();
   } else if (!kinesisConfig.isEnabled && flushTimer) {
     stopFlushTimer();
     kinesisClient = null;
   }
-  
+
   console.log('[Telemetry] Kinesis configured:', kinesisConfig);
 }
 
@@ -67,12 +67,12 @@ export function getKinesisConfig() {
  */
 function startFlushTimer() {
   if (flushTimer) return;
-  
+
   flushTimer = setInterval(() => {
-    if (TELEMETRY_BUFFER.length > 0) 
+    if (TELEMETRY_BUFFER.length > 0)
       flushToKinesis();
   }, kinesisConfig.flushInterval);
-  
+
   console.log('[Telemetry] Kinesis flush timer started');
 }
 
@@ -91,13 +91,13 @@ function stopFlushTimer() {
  * Flush buffered telemetry data to AWS Kinesis
  */
 async function flushToKinesis() {
-  if (pendingFlush || TELEMETRY_BUFFER.length === 0 ||!kinesisClient)
-	  return;
+  if (pendingFlush || TELEMETRY_BUFFER.length === 0 || !kinesisClient)
+    return;
 
   pendingFlush = true;
-  
+
   const dataToSend = [...TELEMETRY_BUFFER];
-  
+
   try {
     for (const event of dataToSend) {
       await putKinesisRecord({
@@ -106,11 +106,11 @@ async function flushToKinesis() {
         partitionKey: generatePartitionKey(),
       });
     }
-    
+
     console.log(`[Telemetry] Successfully sent ${dataToSend.length} records to Kinesis stream: ${kinesisConfig.streamName}`);
-    
+
     clearTelemetry(); // Clear buffer after successful send
-    
+
   } catch (error) {
     console.error('[Telemetry] Failed to send to Kinesis:', error);
   } finally {
@@ -123,7 +123,7 @@ async function flushToKinesis() {
  * Uses session ID + random value for even distribution
  */
 function generatePartitionKey() {
-  const sessionId = sessionStorage.getItem('telemetry_session_id') || 
+  const sessionId = sessionStorage.getItem('telemetry_session_id') ||
     Math.random().toString(36).substring(2, 15);
   sessionStorage.setItem('telemetry_session_id', sessionId);
   return `${sessionId}-${Date.now()}`;
@@ -180,12 +180,12 @@ function createEvent(eventType, data = {}) {
  */
 function addEvent(event) {
   TELEMETRY_BUFFER.push(event);
-  
+
   // Keep buffer size limited
   if (TELEMETRY_BUFFER.length > MAX_BUFFER_SIZE) {
     TELEMETRY_BUFFER.shift();
   }
-  
+
   // Log to console in development
   if (process.env.NODE_ENV !== 'production') {
     console.log('[Telemetry]', JSON.stringify(event, null, 2));
@@ -329,7 +329,7 @@ export function clearTelemetry() {
 export function initMouseTracking() {
   // Always set up new tracking (even after stopTracking was called)
   // The early return was preventing re-initialization after checkout
-  
+
   let lastMoveTime = 0;
 
   const handleMouseMove = (e) => {

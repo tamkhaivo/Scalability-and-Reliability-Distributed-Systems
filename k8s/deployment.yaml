@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-ingestion
+  namespace: default
+  labels:
+    app: dashboard-ingestion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard-ingestion
+  template:
+    metadata:
+      labels:
+        app: dashboard-ingestion
+    spec:
+      serviceAccountName: analytics-consumer
+      containers:
+      - name: dashboard
+        image: public.ecr.aws/nginx/nginx:latest # Replace with your ECR image
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
