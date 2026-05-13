@@ -2,10 +2,10 @@
 // src/kinesis.js
 // =============================
 import { KinesisClient, PutRecordCommand, PutRecordsCommand } from "@aws-sdk/client-kinesis";
+import { fromCognitoIdentityPool } from "@aws-sdk/credential-providers";
 
-export const KINESIS_STREAM_ARN = "";
-export const AWS_ACCESS_KEY_ID = "";
-export const AWS_SECRET_ACCESS_KEY = "";
+export const KINESIS_STREAM_ARN = "arn:aws:kinesis:us-east-1:327444422515:stream/UserMetricsStream";
+export const IDENTITY_POOL_ID = "us-east-1:4b78870f-3948-4123-83f0-4520ee62e51a";
 
 export function parseKinesisArn(arn) {
   const parts = arn.split(":");
@@ -34,18 +34,12 @@ export function createKinesisClient() {
     );
   }
 
-  if (
-    AWS_ACCESS_KEY_ID === "YOUR_ACCESS_KEY_ID" || AWS_SECRET_ACCESS_KEY === "YOUR_SECRET_ACCESS_KEY"
-  ) {
-    throw new Error("Replace AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in src/kinesis.js first.");
-  }
-
   return new KinesisClient({
     region,
-    credentials: {
-      accessKeyId: AWS_ACCESS_KEY_ID,
-      secretAccessKey: AWS_SECRET_ACCESS_KEY,
-    },
+    credentials: fromCognitoIdentityPool({
+      clientConfig: { region },
+      identityPoolId: IDENTITY_POOL_ID,
+    }),
   });
 }
 
