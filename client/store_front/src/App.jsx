@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ShoppingCart, Search, Star, Plus, Minus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { trackAddToCart, trackRemoveFromCart, initMouseTracking, initTabTracking, stopTracking, trackNavigateAway, configureKinesis, flushNow } from "@/lib/telemetry";
 
 const PRODUCTS = [
   {
@@ -66,6 +67,8 @@ const PRODUCTS = [
 
 const CATEGORIES = ["All", "Home", "Fashion", "Electronics"];
 
+const flushInterval = 5; // 5 seconds default
+
 export default function BarebonesEcommerceFrontend() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [search, setSearch] = useState("");
@@ -75,6 +78,34 @@ export default function BarebonesEcommerceFrontend() {
     company: "",
     request: "",
   });
+
+  // Initialize mouse, tab tracking and Kinesis on mount
+  useEffect(() => {
+    // Configure AWS Kinesis Data Stream
+    configureKinesis({
+      flushInterval: flushInterval * 1000, // Convert to milliseconds
+      isEnabled: true,
+    });
+    
+    const cleanupMouse = initMouseTracking();
+    const cleanupTab = initTabTracking();
+    
+    // Track navigation away on link clicks
+    const handleLinkClick = (e) => {
+      const anchor = e.target.closest('a');
+      if (anchor && anchor.href) {
+        trackNavigateAway(anchor.href);
+      }
+    };
+    
+    document.addEventListener('click', handleLinkClick, { passive: true });
+    
+    return () => {
+      cleanupMouse();
+      cleanupTab();
+      document.removeEventListener('click', handleLinkClick);
+    };
+  }, []);
 
   const filteredProducts = useMemo(() => {
     return PRODUCTS.filter((product) => {
@@ -88,23 +119,37 @@ export default function BarebonesEcommerceFrontend() {
   const addToCart = (product) => {
     setCart((current) => {
       const existing = current.find((item) => item.id === product.id);
+      let updatedCart;
       if (existing) {
-        return current.map((item) =>
+        updatedCart = current.map((item) =>
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
+      } else {
+        updatedCart = [...current, { ...product, quantity: 1 }];
       }
-      return [...current, { ...product, quantity: 1 }];
+      // Track the add to cart event
+      const addedItem = updatedCart.find((item) => item.id === product.id);
+      trackAddToCart(addedItem);
+      return updatedCart;
     });
   };
 
   const updateQuantity = (id, delta) => {
-    setCart((current) =>
-      current
+    setCart((current) => {
+      const updatedCart = current
         .map((item) =>
           item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item
         )
-        .filter((item) => item.quantity > 0)
-    );
+        .filter((item) => item.quantity > 0);
+      
+      // Track removal when quantity goes to 0
+      const removedItem = current.find((item) => item.id === id && item.quantity + delta <= 0);
+      if (removedItem) {
+        trackRemoveFromCart(removedItem);
+      }
+      
+      return updatedCart;
+    });
   };
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -112,8 +157,18 @@ export default function BarebonesEcommerceFrontend() {
 
   const handleRequestSubmit = (e) => {
     e.preventDefault();
-    alert(`Mock request captured for ${requestForm.client || "client"}.\n\nCompany: ${requestForm.company || "N/A"}\nRequest: ${requestForm.request || "N/A"}`);
+    console.log(`Mock request captured for ${requestForm.client || "client"}.\n\nCompany: ${requestForm.company || "N/A"}\nRequest: ${requestForm.request || "N/A"}`);
     setRequestForm({ client: "", company: "", request: "" });
+  };
+
+  const handleCheckout = () => {
+    // Track navigation away to checkout
+    trackNavigateAway('/checkout');
+    // Stop all telemetry tracking when proceeding to checkout
+    stopTracking();
+    console.log("Proceeding to checkout - telemetry stopped");
+    // Close the current tab
+    window.close();
   };
 
   return (
@@ -129,13 +184,14 @@ export default function BarebonesEcommerceFrontend() {
             <div className="relative w-full md:w-80">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
+                id="input-search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search products"
                 className="pl-9"
               />
             </div>
-            <Button variant="outline" className="rounded-2xl">
+            <Button id="btn-cart" variant="outline" className="rounded-2xl">
               <ShoppingCart className="h-4 w-4 mr-2" />
               Cart ({cartCount})
             </Button>
@@ -163,6 +219,7 @@ export default function BarebonesEcommerceFrontend() {
                   {CATEGORIES.map((category) => (
                     <Button
                       key={category}
+                      id={`btn-category-${category.toLowerCase()}`}
                       variant={selectedCategory === category ? "default" : "outline"}
                       className="rounded-2xl"
                       onClick={() => setSelectedCategory(category)}
@@ -236,7 +293,7 @@ export default function BarebonesEcommerceFrontend() {
                           <Star className="h-4 w-4 fill-current" />
                           {product.rating}
                         </div>
-                        <Button className="rounded-2xl" onClick={() => addToCart(product)}>
+                        <Button id={`btn-add-to-cart-${product.id}`} className="rounded-2xl" onClick={() => addToCart(product)}>
                           Add to cart
                         </Button>
                       </div>
@@ -268,11 +325,11 @@ export default function BarebonesEcommerceFrontend() {
                         <p className="font-medium">${item.price * item.quantity}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button size="icon" variant="outline" className="rounded-xl" onClick={() => updateQuantity(item.id, -1)}>
+                        <Button id={`btn-decrease-${item.id}`} size="icon" variant="outline" className="rounded-xl" onClick={() => updateQuantity(item.id, -1)}>
                           <Minus className="h-4 w-4" />
                         </Button>
                         <span className="w-8 text-center">{item.quantity}</span>
-                        <Button size="icon" variant="outline" className="rounded-xl" onClick={() => updateQuantity(item.id, 1)}>
+                        <Button id={`btn-increase-${item.id}`} size="icon" variant="outline" className="rounded-xl" onClick={() => updateQuantity(item.id, 1)}>
                           <Plus className="h-4 w-4" />
                         </Button>
                       </div>
@@ -282,7 +339,9 @@ export default function BarebonesEcommerceFrontend() {
                     <span>Total</span>
                     <span>${cartTotal}</span>
                   </div>
-                  <Button className="w-full rounded-2xl">Proceed to checkout</Button>
+                  <Button id="btn-checkout" className="w-full rounded-2xl" onClick={handleCheckout}>
+                    Proceed to checkout
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -295,22 +354,25 @@ export default function BarebonesEcommerceFrontend() {
             <CardContent>
               <form onSubmit={handleRequestSubmit} className="space-y-4">
                 <Input
+                  id="input-client"
                   placeholder="Client name"
                   value={requestForm.client}
                   onChange={(e) => setRequestForm((current) => ({ ...current, client: e.target.value }))}
                 />
                 <Input
+                  id="input-company"
                   placeholder="Company"
                   value={requestForm.company}
                   onChange={(e) => setRequestForm((current) => ({ ...current, company: e.target.value }))}
                 />
                 <Textarea
+                  id="textarea-request"
                   placeholder="Describe the requested storefront changes or products"
                   rows={5}
                   value={requestForm.request}
                   onChange={(e) => setRequestForm((current) => ({ ...current, request: e.target.value }))}
                 />
-                <Button type="submit" className="w-full rounded-2xl">Capture request</Button>
+                <Button id="btn-submit-request" type="submit" className="w-full rounded-2xl">Capture request</Button>
               </form>
             </CardContent>
           </Card>
