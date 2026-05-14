@@ -81,11 +81,33 @@ export default function BarebonesEcommerceFrontend() {
 
   // Initialize mouse, tab tracking and Kinesis on mount
   useEffect(() => {
-    // Configure AWS Kinesis Data Stream
-    configureKinesis({
-      flushInterval: flushInterval * 1000, // Convert to milliseconds
-      isEnabled: true,
-    });
+    const initTelemetry = async () => {
+      let config = {
+        flushInterval: flushInterval * 1000,
+        isEnabled: true,
+      };
+
+      try {
+        const response = await fetch('config.json');
+        if (response.ok) {
+          const remoteConfig = await response.json();
+          config = {
+            ...config,
+            identityPoolId: remoteConfig.identityPoolId,
+            region: remoteConfig.region,
+            streamName: remoteConfig.streamName,
+          };
+          console.log("[App] Loaded remote config:", remoteConfig);
+        }
+      } catch (err) {
+        console.warn("[App] Could not load config.json, using fallback/defaults:", err);
+      }
+
+      // Configure AWS Kinesis Data Stream
+      configureKinesis(config);
+    };
+
+    initTelemetry();
     
     const cleanupMouse = initMouseTracking();
     const cleanupTab = initTabTracking();

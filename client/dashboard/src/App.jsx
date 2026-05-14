@@ -6,9 +6,10 @@ import Dashboard from "./pages/Dashboard.jsx";
 
 function App() {
   return (
-    <Router>
+    <Router basename="/dashboard">
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/index.html" element={<Dashboard />} />
       </Routes>
     </Router>
   );

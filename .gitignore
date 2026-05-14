@@ -2,3 +2,4 @@ client/store_front/package-lock.json
 .env
 *.class
 /infrastructure/aws-java-app/target/maven-status
+/server/analytics-processor/target

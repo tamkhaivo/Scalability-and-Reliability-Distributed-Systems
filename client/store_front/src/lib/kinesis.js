@@ -4,15 +4,15 @@
 import { KinesisClient, PutRecordCommand, PutRecordsCommand } from "@aws-sdk/client-kinesis";
 import { fromCognitoIdentityPool } from "@aws-sdk/credential-providers";
 
-export const KINESIS_STREAM_ARN = "arn:aws:kinesis:us-east-1:327444422515:stream/UserMetricsStream";
-export const IDENTITY_POOL_ID = "us-east-1:4b78870f-3948-4123-83f0-4520ee62e51a";
-
 export function parseKinesisArn(arn) {
+  if (!arn) return { region: "", accountId: "", streamName: "" };
+  if (!arn.startsWith("arn:aws:kinesis")) return { region: "us-east-1", accountId: "", streamName: arn };
+
   const parts = arn.split(":");
-  const region = parts[3] || "";
+  const region = parts[3] || "us-east-1";
   const accountId = parts[4] || "";
   const resource = parts.slice(5).join(":");
-  const streamName = resource.startsWith("stream/") ? resource.replace("stream/", "") : "";
+  const streamName = resource.startsWith("stream/") ? resource.replace("stream/", "") : resource;
 
   return { region, accountId, streamName };
 }
@@ -25,27 +25,21 @@ function randomPartitionKey() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function createKinesisClient() {
-  const { region, streamName } = parseKinesisArn(KINESIS_STREAM_ARN);
-
-  if (!region || !streamName) {
-    throw new Error(
-      "Invalid Kinesis ARN. Expected arn:aws:kinesis:REGION:ACCOUNT_ID:stream/STREAM_NAME"
-    );
+export function createKinesisClient(identityPoolId, region = "us-east-1") {
+  if (!identityPoolId) {
+    throw new Error("Identity Pool ID is required for Kinesis Client");
   }
 
   return new KinesisClient({
     region,
     credentials: fromCognitoIdentityPool({
       clientConfig: { region },
-      identityPoolId: IDENTITY_POOL_ID,
+      identityPoolId: identityPoolId,
     }),
   });
 }
 
-export async function putKinesisRecord({ client, data, partitionKey }) {
-  const { streamName } = parseKinesisArn(KINESIS_STREAM_ARN);
-
+export async function putKinesisRecord({ client, streamName, data, partitionKey }) {
   const command = new PutRecordCommand({
     StreamName: streamName,
     PartitionKey: partitionKey || randomPartitionKey(),
@@ -55,29 +49,18 @@ export async function putKinesisRecord({ client, data, partitionKey }) {
   return client.send(command);
 }
 
-export async function putKinesisRecords({ client, data, partitionKey, count = 1 }) {
-  const { streamName } = parseKinesisArn(KINESIS_STREAM_ARN);
-  const safeCount = Math.max(1, Math.min(500, Number(count) || 1));
+export async function putKinesisRecords({ client, streamName, records }) {
+  if (!records || records.length === 0) return;
 
-  const records = Array.from({ length: safeCount }).map((_, i) => ({
-    Data: encodeData(
-      JSON.stringify({
-        ...data,
-        batchIndex: i,
-        ts: new Date().toISOString(),
-      })
-    ),
-    PartitionKey: `${partitionKey || "demo-key"}-${i}`,
+  const kinesisRecords = records.map((record) => ({
+    Data: encodeData(JSON.stringify(record.data)),
+    PartitionKey: record.partitionKey || randomPartitionKey(),
   }));
 
   const command = new PutRecordsCommand({
     StreamName: streamName,
-    Records: records,
+    Records: kinesisRecords,
   });
 
   return client.send(command);
-}
-
-export function getKinesisStreamInfo() {
-  return parseKinesisArn(KINESIS_STREAM_ARN);
 }

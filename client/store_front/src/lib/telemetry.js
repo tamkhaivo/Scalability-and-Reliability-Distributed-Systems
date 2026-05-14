@@ -4,7 +4,7 @@
  * Includes AWS Kinesis Data Stream integration
  */
 
-import { createKinesisClient, putKinesisRecord, getKinesisStreamInfo } from './kinesis.js';
+import { createKinesisClient, putKinesisRecords } from './kinesis.js';
 
 const TELEMETRY_BUFFER = [];
 const MAX_BUFFER_SIZE = 100;
@@ -14,8 +14,9 @@ let isTracking = false;
 
 // AWS Kinesis Configuration
 let kinesisConfig = {
-  region: 'us-east-2',
+  region: 'us-east-1',
   streamName: 'UserMetricsStream',
+  identityPoolId: null,
   flushInterval: 5000, // Default 5 seconds
   isEnabled: false,
 };
@@ -26,26 +27,16 @@ let kinesisClient = null;
 /**
  * Configure AWS Kinesis Data Stream settings
  * @param {Object} config - Configuration options
- * @param {string} config.region - AWS region (e.g., 'us-east-1')
- * @param {string} config.streamName - Kinesis stream name
- * @param {number} config.flushInterval - Time in ms to buffer before sending (default: 5000ms)
- * @param {boolean} config.isEnabled - Enable/disable Kinesis streaming
  */
 export async function configureKinesis(config) {
-  const streamInfo = getKinesisStreamInfo();
   kinesisConfig = {
     ...kinesisConfig,
-    region: streamInfo.region,
-    streamName: streamInfo.streamName,
     ...config,
   };
 
-  if (kinesisConfig.isEnabled && !flushTimer) {
-    kinesisClient = createKinesisClient();
-    // Verify connection by describing the stream
-    const command = new DescribeStreamCommand({ StreamName: streamInfo.streamName });
-    const response = await kinesisClient.send(command);
-    console.log("Connected to stream:", response.StreamDescription.StreamName);
+  if (kinesisConfig.isEnabled && kinesisConfig.identityPoolId && !flushTimer) {
+    kinesisClient = createKinesisClient(kinesisConfig.identityPoolId, kinesisConfig.region);
+    console.log(`[Telemetry] Kinesis client created for stream: ${kinesisConfig.streamName} in ${kinesisConfig.region}`);
     startFlushTimer();
   } else if (!kinesisConfig.isEnabled && flushTimer) {
     stopFlushTimer();
@@ -96,20 +87,26 @@ async function flushToKinesis() {
 
   pendingFlush = true;
 
-  const dataToSend = [...TELEMETRY_BUFFER];
+  // Take a snapshot of the current buffer
+  const batchSize = TELEMETRY_BUFFER.length;
+  const dataToSend = TELEMETRY_BUFFER.slice(0, batchSize);
 
   try {
-    for (const event of dataToSend) {
-      await putKinesisRecord({
-        client: kinesisClient,
-        data: event,
-        partitionKey: generatePartitionKey(),
-      });
-    }
+    const records = dataToSend.map(event => ({
+      data: event,
+      partitionKey: generatePartitionKey(),
+    }));
+
+    await putKinesisRecords({
+      client: kinesisClient,
+      streamName: kinesisConfig.streamName,
+      records,
+    });
 
     console.log(`[Telemetry] Successfully sent ${dataToSend.length} records to Kinesis stream: ${kinesisConfig.streamName}`);
 
-    clearTelemetry(); // Clear buffer after successful send
+    // Remove ONLY the records that were successfully sent
+    TELEMETRY_BUFFER.splice(0, batchSize);
 
   } catch (error) {
     console.error('[Telemetry] Failed to send to Kinesis:', error);
