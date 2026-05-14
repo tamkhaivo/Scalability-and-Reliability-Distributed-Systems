@@ -10,6 +10,7 @@ const Dashboard = () => {
   const [metrics, setMetrics] = useState({ sessions: 0, clicks: 0 });
   const [systemHealth, setSystemHealth] = useState({ ingestionRate: 0, streamLag: 0, activeShards: 0 });
   const [events, setEvents] = useState([]);
+  const [mousePoints, setMousePoints] = useState([]);
   
   const clientRef = useRef(null);
   const iteratorRef = useRef(null);
@@ -58,17 +59,35 @@ const Dashboard = () => {
 
   const processRecords = (newRecords) => {
     let newClicks = 0;
-    const now = Date.now();
+    const newMousePoints = [];
 
     newRecords.forEach(record => {
-      if (record.sessionId) sessionSet.current.add(record.sessionId);
+      const { eventType, data } = record;
 
-      if (record.type === "click" || (record.elementId && record.elementId.startsWith("btn-"))) {
+      if (record.PartitionKey) {
+        const sessionId = record.PartitionKey.split('-');
+        sessionSet.current.add(sessionId);
+      }
+
+      if (eventType === "mouse_click" || data.target?.id?.startsWith("btn-")) {
         newClicks++;
+      }
+
+      if (eventType === "mouse_move" || eventType === "mouse_click") {
+        newMousePoints.push({
+          x: data.position.x,
+          y: data.position.y,
+          isClick: eventType === "mouse_click",
+          id: Math.random()
+        });
       }
     });
 
+    //For "live event stream"
     setEvents(prev => [...newRecords, ...prev].slice(0, 30));
+
+    //For "mouse heatmap"
+    setMousePoints(prev => [...newMousePoints, ...prev].slice(0, 50));
 
     // Update the metrics values
     setMetrics(prev => ({
@@ -137,7 +156,22 @@ const Dashboard = () => {
               </div>
               <div className="card-body">
                 <div className="placeholder">
-                  Real-time mouse tracking will render here
+                  {mousePoints.map((point) => (
+                  <div
+                    key={point.id}
+                    style={{
+                      position: 'absolute',
+                      left: `${point.x}%`,
+                      top: `${point.y}%`,
+                      width: point.isClick ? '12px' : '6px',
+                      height: point.isClick ? '12px' : '6px',
+                      borderRadius: '50%',
+                      backgroundColor: point.isClick ? '#ff4d4f' : '#1890ff',
+                      opacity: 0.6,
+                      transform: 'translate(-50%, -50%)'
+                    }}
+                  />
+                ))}
                 </div>
               </div>
             </div>
