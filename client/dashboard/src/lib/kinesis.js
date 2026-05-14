@@ -73,6 +73,7 @@ export async function getKinesisRecords({ client, shardIterator }) {
   return {
     records,
     nextIterator: response.NextShardIterator,
+    millisBehindLatest: response.MillisBehindLatest,
   };
 }
 
