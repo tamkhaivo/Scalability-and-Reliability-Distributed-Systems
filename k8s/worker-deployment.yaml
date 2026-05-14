@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-worker
+  namespace: default
+  labels:
+    app: analytics-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: analytics-worker
+  template:
+    metadata:
+      labels:
+        app: analytics-worker
+    spec:
+      serviceAccountName: analytics-consumer
+      containers:
+      - name: worker
+        image: 327444422515.dkr.ecr.us-east-1.amazonaws.com/analytics-processor:latest
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "worker"
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"

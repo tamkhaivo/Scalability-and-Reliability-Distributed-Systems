@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Base64;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Paths;
@@ -64,6 +65,8 @@ public class InitializeEnvironment {
     private static final String EKS_NODE_ROLE_NAME = "MessageOrderingEksNodeRole";
     private static final String EKS_ANALYTICS_POD_ROLE_NAME = "MessageOrderingAnalyticsPodRole";
     private static final String PUBLIC_PUT_ROLE_NAME = "MessageOrderingPublicPutRole";
+    private static final String PRODUCER_ROLE_NAME = "MessageOrderingProducerRole";
+    private static final String PRODUCER_PROFILE_NAME = "MessageOrderingProducerProfile";
     private static final String COGNITO_POOL_NAME = "MessageOrderingIdentityPool";
     private static final String WEB_BUCKET_NAME_PREFIX = "message-ordering-web-";
     private static final String DYNAMODB_TABLE_NAME = "UserTelemetryAggregations";
@@ -150,6 +153,7 @@ public class InitializeEnvironment {
 
         String clusterRoleArn = createClusterRole(iamClient);
         String nodeRoleArn = createNodeRole(iamClient);
+        setupProducerIAM(iamClient);
 
         return java.util.Map.of(
             "clusterRoleArn", clusterRoleArn,
@@ -413,7 +417,37 @@ public class InitializeEnvironment {
         String oidcProviderArn = setupOidcProvider(iamClient, oidcIssuer);
         
         // 3. Create Pod IAM Role
-        setupPodRole(iamClient, oidcUrl, oidcProviderArn);
+        String podRoleArn = setupPodRole(iamClient, oidcUrl, oidcProviderArn);
+
+        // 4. Update k8s service account with the correct role ARN
+        writeK8sServiceAccount(podRoleArn);
+    }
+
+    private static void writeK8sServiceAccount(String roleArn) {
+        String saPath = "../../k8s/serviceaccount.yaml";
+        logger.info("Updating K8s ServiceAccount at {} with role: {}", saPath, roleArn);
+        
+        String yaml = "apiVersion: v1\n" +
+                "kind: ServiceAccount\n" +
+                "metadata:\n" +
+                "  name: analytics-consumer\n" +
+                "  namespace: default\n" +
+                "  annotations:\n" +
+                "    eks.amazonaws.com/role-arn: " + roleArn + "\n";
+
+        try {
+            java.io.File file = new java.io.File(saPath);
+            if (file.exists()) {
+                try (FileWriter writer = new FileWriter(file)) {
+                    writer.write(yaml);
+                }
+                logger.info("K8s ServiceAccount updated successfully.");
+            } else {
+                logger.warn("ServiceAccount file not found at {}. Skipping update.", saPath);
+            }
+        } catch (IOException e) {
+            logger.error("Failed to update K8s ServiceAccount: ", e);
+        }
     }
 
     private static Cluster waitForClusterActive(EksClient eksClient, String clusterName) {
@@ -467,7 +501,7 @@ public class InitializeEnvironment {
         return response.openIDConnectProviderArn();
     }
 
-    private static void setupPodRole(IamClient iamClient, String oidcUrl, String oidcProviderArn) {
+    private static String setupPodRole(IamClient iamClient, String oidcUrl, String oidcProviderArn) {
         // Analytics pods in 'default' namespace using 'analytics-consumer' service account
         String namespace = "default";
         String serviceAccount = "analytics-consumer";
@@ -488,21 +522,22 @@ public class InitializeEnvironment {
                 + "}";
 
         try {
-            iamClient.getRole(GetRoleRequest.builder().roleName(EKS_ANALYTICS_POD_ROLE_NAME).build());
+            GetRoleResponse response = iamClient.getRole(GetRoleRequest.builder().roleName(EKS_ANALYTICS_POD_ROLE_NAME).build());
             logger.info("Pod Role '{}' already exists.", EKS_ANALYTICS_POD_ROLE_NAME);
+            return response.role().arn();
         } catch (NoSuchEntityException e) {
             logger.info("Creating Pod IAM Role: {}", EKS_ANALYTICS_POD_ROLE_NAME);
-            iamClient.createRole(CreateRoleRequest.builder()
+            CreateRoleResponse createResponse = iamClient.createRole(CreateRoleRequest.builder()
                     .roleName(EKS_ANALYTICS_POD_ROLE_NAME)
                     .assumeRolePolicyDocument(trustPolicy)
                     .description("Role for EKS pods to access Kinesis")
                     .tags(software.amazon.awssdk.services.iam.model.Tag.builder().key(PROJECT_TAG_KEY).value(PROJECT_TAG_VALUE).build())
                     .build());
 
-            // Attach Kinesis Read permissions
+            // Attach Kinesis Full permissions (KCL 2.x needs RegisterStreamConsumer etc)
             iamClient.attachRolePolicy(AttachRolePolicyRequest.builder()
                     .roleName(EKS_ANALYTICS_POD_ROLE_NAME)
-                    .policyArn("arn:aws:iam::aws:policy/AmazonKinesisReadOnlyAccess")
+                    .policyArn("arn:aws:iam::aws:policy/AmazonKinesisFullAccess")
                     .build());
             
             // Attach DynamoDB access
@@ -510,8 +545,15 @@ public class InitializeEnvironment {
                     .roleName(EKS_ANALYTICS_POD_ROLE_NAME)
                     .policyArn("arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess")
                     .build());
+
+            // Attach CloudWatch access for KCL metrics
+            iamClient.attachRolePolicy(AttachRolePolicyRequest.builder()
+                    .roleName(EKS_ANALYTICS_POD_ROLE_NAME)
+                    .policyArn("arn:aws:iam::aws:policy/CloudWatchFullAccess")
+                    .build());
             
-            logger.info("Pod IAM Role '{}' created and Kinesis permissions attached.", EKS_ANALYTICS_POD_ROLE_NAME);
+            logger.info("Pod IAM Role '{}' created and Kinesis/DynamoDB/CloudWatch permissions attached.", EKS_ANALYTICS_POD_ROLE_NAME);
+            return createResponse.role().arn();
         }
     }
 
@@ -612,7 +654,11 @@ public class InitializeEnvironment {
         String roleArn;
         try {
             roleArn = iamClient.getRole(GetRoleRequest.builder().roleName(PUBLIC_PUT_ROLE_NAME).build()).role().arn();
-            logger.info("Public Put Role already exists.");
+            logger.info("Public Put Role already exists. Updating trust policy...");
+            iamClient.updateAssumeRolePolicy(UpdateAssumeRolePolicyRequest.builder()
+                    .roleName(PUBLIC_PUT_ROLE_NAME)
+                    .policyDocument(trustPolicy)
+                    .build());
         } catch (NoSuchEntityException e) {
             logger.info("Creating Public Put Role: {}", PUBLIC_PUT_ROLE_NAME);
             roleArn = iamClient.createRole(CreateRoleRequest.builder()
@@ -620,31 +666,38 @@ public class InitializeEnvironment {
                     .assumeRolePolicyDocument(trustPolicy)
                     .tags(software.amazon.awssdk.services.iam.model.Tag.builder().key(PROJECT_TAG_KEY).value(PROJECT_TAG_VALUE).build())
                     .build()).role().arn();
-
-            // Permissions for Kinesis PutRecord
-            // Ideally use resource ARN for the specific stream
-            String streamArn = "arn:aws:kinesis:*:*:stream/" + STREAM_NAME;
-            String policyDocument = "{"
-                    + "\"Version\": \"2012-10-17\","
-                    + "\"Statement\": [{"
-                    + "\"Effect\": \"Allow\","
-                    + "\"Action\": [\"kinesis:PutRecord\", \"kinesis:DescribeStream\"],"
-                    + "\"Resource\": \"" + streamArn + "\""
-                    + "}]"
-                    + "}";
-
-            iamClient.putRolePolicy(PutRolePolicyRequest.builder()
-                    .roleName(PUBLIC_PUT_ROLE_NAME)
-                    .policyName("KinesisPublicPutPolicy")
-                    .policyDocument(policyDocument)
-                    .build());
         }
+
+        // Always update the inline policy to ensure permissions are correct
+        String streamArn = "arn:aws:kinesis:*:*:stream/" + STREAM_NAME;
+        String tableArn = "arn:aws:dynamodb:*:*:table/" + DYNAMODB_TABLE_NAME;
+        String policyDocument = "{"
+                + "\"Version\": \"2012-10-17\","
+                + "\"Statement\": [{"
+                + "\"Effect\": \"Allow\","
+                + "\"Action\": [\"kinesis:PutRecord\", \"kinesis:PutRecords\", \"kinesis:DescribeStream\"],"
+                + "\"Resource\": \"" + streamArn + "\""
+                + "}, {"
+                + "\"Effect\": \"Allow\","
+                + "\"Action\": [\"dynamodb:Query\", \"dynamodb:Scan\"],"
+                + "\"Resource\": \"" + tableArn + "\""
+                + "}]"
+                + "}";
+
+        iamClient.putRolePolicy(PutRolePolicyRequest.builder()
+                .roleName(PUBLIC_PUT_ROLE_NAME)
+                .policyName("KinesisPublicPutAndDynamoReadPolicy")
+                .policyDocument(policyDocument)
+                .build());
+
         return roleArn;
     }
 
     private static void writeFrontendConfig(String identityPoolId, String accountId) {
-        String configPath = "../../client/store_front/public/config.json";
-        logger.info("Writing frontend configuration to {}...", configPath);
+        String storeFrontConfigPath = "../../client/store_front/public/config.json";
+        String dashboardConfigPath = "../../client/dashboard/public/config.json";
+        
+        logger.info("Writing frontend configuration to {} and {}...", storeFrontConfigPath, dashboardConfigPath);
         
         String json = String.format("{\n" +
                 "  \"identityPoolId\": \"%s\",\n" +
@@ -653,14 +706,21 @@ public class InitializeEnvironment {
                 "}", identityPoolId, STREAM_NAME);
 
         try {
-            // Ensure directory exists
-            java.io.File file = new java.io.File(configPath);
-            file.getParentFile().mkdirs();
-            
-            try (FileWriter writer = new FileWriter(file)) {
+            // Write to store_front
+            java.io.File sfFile = new java.io.File(storeFrontConfigPath);
+            sfFile.getParentFile().mkdirs();
+            try (FileWriter writer = new FileWriter(sfFile)) {
                 writer.write(json);
             }
-            logger.info("Frontend config.json written successfully.");
+            
+            // Write to dashboard
+            java.io.File dashFile = new java.io.File(dashboardConfigPath);
+            dashFile.getParentFile().mkdirs();
+            try (FileWriter writer = new FileWriter(dashFile)) {
+                writer.write(json);
+            }
+            
+            logger.info("Frontend config.json written successfully to both clients.");
         } catch (IOException e) {
             logger.error("Failed to write frontend config.json: ", e);
         }
@@ -710,6 +770,32 @@ public class InitializeEnvironment {
 
         logger.info("Using latest Amazon Linux 2023 AMI: {}", amiId);
 
+        // ── User Data Script ───────────────────────────────────────
+        String userDataScript = "#!/bin/bash\n" +
+                "yum update -y\n" +
+                "yum install -y python3 python3-pip\n" +
+                "pip3 install boto3\n" +
+                "cat << 'EOF' > /home/ec2-user/producer.py\n" +
+                "import boto3, json, time, random, uuid, datetime\n" +
+                "kinesis = boto3.client('kinesis', region_name='us-east-1')\n" +
+                "stream_name = 'UserMetricsStream'\n" +
+                "event_types = ['mouse_move', 'mouse_click', 'product_add_to_cart']\n" +
+                "while True:\n" +
+                "  try:\n" +
+                "    session_id = str(uuid.uuid4())\n" +
+                "    for _ in range(random.randint(5, 20)):\n" +
+                "      event = {'timestamp': datetime.datetime.utcnow().isoformat() + 'Z', 'eventType': random.choices(event_types, weights=[80, 15, 5])[0], 'data': {'mock': True}}\n" +
+                "      kinesis.put_record(StreamName=stream_name, Data=json.dumps(event), PartitionKey=session_id)\n" +
+                "      time.sleep(random.uniform(0.1, 0.5))\n" +
+                "    time.sleep(random.uniform(1, 3))\n" +
+                "  except Exception as e:\n" +
+                "    time.sleep(5)\n" +
+                "EOF\n" +
+                "chown ec2-user:ec2-user /home/ec2-user/producer.py\n" +
+                "nohup python3 /home/ec2-user/producer.py > /home/ec2-user/producer.log 2>&1 &\n";
+
+        String base64UserData = Base64.getEncoder().encodeToString(userDataScript.getBytes());
+
         // ── Launch instances ───────────────────────────────────────
         int instancesToLaunch = 2 - (int) existingCount;
         logger.info("Launching {} new EC2 instance(s)...", instancesToLaunch);
@@ -719,6 +805,8 @@ public class InitializeEnvironment {
                 .instanceType(InstanceType.T3_NANO) // Cheapest instance type
                 .minCount(instancesToLaunch)
                 .maxCount(instancesToLaunch)
+                .iamInstanceProfile(IamInstanceProfileSpecification.builder().name(PRODUCER_PROFILE_NAME).build())
+                .userData(base64UserData)
                 .tagSpecifications(
                     TagSpecification.builder()
                         .resourceType(ResourceType.INSTANCE)
@@ -738,5 +826,48 @@ public class InitializeEnvironment {
         
         logger.info("Successfully launched {} EC2 instance(s): {}", instanceIds.size(), instanceIds);
         logger.info("One instance should be configured as the Producer and the other as Consumer.");
+    }
+
+    private static void setupProducerIAM(IamClient iamClient) {
+        logger.info("Setting up IAM Producer Role and Instance Profile...");
+        String trustPolicy = "{"
+                + "\"Version\": \"2012-10-17\","
+                + "\"Statement\": [{"
+                + "\"Effect\": \"Allow\","
+                + "\"Principal\": {\"Service\": \"ec2.amazonaws.com\"},"
+                + "\"Action\": \"sts:AssumeRole\""
+                + "}]"
+                + "}";
+
+        try {
+            iamClient.getRole(GetRoleRequest.builder().roleName(PRODUCER_ROLE_NAME).build());
+            logger.info("Producer Role already exists.");
+        } catch (NoSuchEntityException e) {
+            iamClient.createRole(CreateRoleRequest.builder()
+                    .roleName(PRODUCER_ROLE_NAME)
+                    .assumeRolePolicyDocument(trustPolicy)
+                    .tags(software.amazon.awssdk.services.iam.model.Tag.builder().key(PROJECT_TAG_KEY).value(PROJECT_TAG_VALUE).build())
+                    .build());
+            iamClient.attachRolePolicy(AttachRolePolicyRequest.builder()
+                    .roleName(PRODUCER_ROLE_NAME)
+                    .policyArn("arn:aws:iam::aws:policy/AmazonKinesisFullAccess")
+                    .build());
+            waitForIAMRolePropagation(iamClient, PRODUCER_ROLE_NAME);
+        }
+
+        try {
+            iamClient.getInstanceProfile(GetInstanceProfileRequest.builder().instanceProfileName(PRODUCER_PROFILE_NAME).build());
+            logger.info("Producer Instance Profile already exists.");
+        } catch (NoSuchEntityException e) {
+            iamClient.createInstanceProfile(CreateInstanceProfileRequest.builder()
+                    .instanceProfileName(PRODUCER_PROFILE_NAME)
+                    .tags(software.amazon.awssdk.services.iam.model.Tag.builder().key(PROJECT_TAG_KEY).value(PROJECT_TAG_VALUE).build())
+                    .build());
+            iamClient.addRoleToInstanceProfile(AddRoleToInstanceProfileRequest.builder()
+                    .instanceProfileName(PRODUCER_PROFILE_NAME)
+                    .roleName(PRODUCER_ROLE_NAME)
+                    .build());
+            logger.info("Producer Instance Profile created and role added.");
+        }
     }
 }
