@@ -45,6 +45,7 @@ public class AggregatorService {
     public void receivePartialMetrics(@RequestBody Map<String, Object> payload) {
         if (payload.containsKey("counts")) {
             Map<String, Number> partialCounts = (Map<String, Number>) payload.get("counts");
+            log.debug("Received {} partial counts", partialCounts.size());
             partialCounts.forEach((type, count) -> {
                 globalCounts.computeIfAbsent(type, k -> new AtomicLong(0)).addAndGet(count.longValue());
             });
@@ -52,6 +53,7 @@ public class AggregatorService {
         
         if (payload.containsKey("activeSessions")) {
             java.util.List<String> sessions = (java.util.List<String>) payload.get("activeSessions");
+            log.debug("Received {} partial sessions", sessions.size());
             long now = System.currentTimeMillis();
             sessions.forEach(sessionId -> sessionLastSeen.put(sessionId, now));
         }
