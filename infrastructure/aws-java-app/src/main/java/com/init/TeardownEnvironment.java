@@ -13,6 +13,8 @@ import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.services.cognitoidentity.CognitoIdentityClient;
 import software.amazon.awssdk.services.cognitoidentity.model.*;
 import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.ecr.EcrClient;
+import software.amazon.awssdk.services.ecr.model.*;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
@@ -48,6 +50,8 @@ public class TeardownEnvironment {
     private static final String COGNITO_POOL_NAME = "MessageOrderingIdentityPool";
     private static final String WEB_BUCKET_NAME_PREFIX = "message-ordering-web-";
     private static final String DYNAMODB_TABLE_NAME = "UserTelemetryAggregations";
+    private static final String KCL_TABLE_NAME = "analytics-processor";
+    private static final String ECR_REPOSITORY_NAME = "analytics-processor";
 
     private static final String PROJECT_TAG_KEY = "Project";
     private static final String PROJECT_TAG_VALUE = "class-project";
@@ -77,6 +81,7 @@ public class TeardownEnvironment {
              S3Client s3Client = S3Client.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
              CognitoIdentityClient cognitoClient = CognitoIdentityClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
              StsClient stsClient = StsClient.builder().region(Region.AWS_GLOBAL).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             EcrClient ecrClient = EcrClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
              DynamoDbClient dynamoDbClient = DynamoDbClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build()) {
 
             logger.info("AWS Clients initialized for teardown.");
@@ -106,8 +111,18 @@ public class TeardownEnvironment {
                 allSucceeded = false;
             }
 
-            // Step 6: Teardown DynamoDB
+            // Step 6: Teardown ECR
+            if (!teardownECRRepository(ecrClient)) {
+                allSucceeded = false;
+            }
+
+            // Step 7: Teardown DynamoDB
             if (!teardownDynamoDB(dynamoDbClient)) {
+                allSucceeded = false;
+            }
+
+            // Step 8: Teardown VPC (last step)
+            if (!teardownProjectVpc(ec2Client)) {
                 allSucceeded = false;
             }
 
@@ -412,18 +427,56 @@ public class TeardownEnvironment {
         return success;
     }
 
-    private static boolean teardownDynamoDB(DynamoDbClient dynamoDbClient) {
-        logger.info("Teardown Step 6: Deleting DynamoDB table '{}'...", DYNAMODB_TABLE_NAME);
+    private static boolean teardownECRRepository(EcrClient ecrClient) {
+        logger.info("Teardown Step 6: Deleting ECR Repository '{}'...", ECR_REPOSITORY_NAME);
         try {
-            dynamoDbClient.describeTable(DescribeTableRequest.builder().tableName(DYNAMODB_TABLE_NAME).build());
-            dynamoDbClient.deleteTable(DeleteTableRequest.builder().tableName(DYNAMODB_TABLE_NAME).build());
-            logger.info("DynamoDB table '{}' deleted successfully.", DYNAMODB_TABLE_NAME);
+            ecrClient.deleteRepository(DeleteRepositoryRequest.builder()
+                    .repositoryName(ECR_REPOSITORY_NAME)
+                    .force(true)
+                    .build());
+            logger.info("ECR repository '{}' deleted successfully.", ECR_REPOSITORY_NAME);
             return true;
-        } catch (software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException e) {
-            logger.info("DynamoDB table '{}' does not exist. Nothing to delete.", DYNAMODB_TABLE_NAME);
+        } catch (software.amazon.awssdk.services.ecr.model.RepositoryNotFoundException e) {
+            logger.info("ECR repository '{}' does not exist. Skipping.", ECR_REPOSITORY_NAME);
             return true;
         } catch (Exception e) {
-            logger.error("Failed to teardown DynamoDB table: ", e);
+            logger.error("Failed to delete ECR repository: ", e);
+            return false;
+        }
+    }
+
+    private static boolean teardownDynamoDB(DynamoDbClient dynamoDbClient) {
+        boolean success = true;
+        List<String> tables = List.of(DYNAMODB_TABLE_NAME, KCL_TABLE_NAME);
+        
+        for (String tableName : tables) {
+            logger.info("Teardown Step 7: Deleting DynamoDB table '{}'...", tableName);
+            try {
+                dynamoDbClient.deleteTable(DeleteTableRequest.builder().tableName(tableName).build());
+                logger.info("DynamoDB table '{}' deletion initiated.", tableName);
+            } catch (software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException e) {
+                logger.info("DynamoDB table '{}' does not exist. Skipping.", tableName);
+            } catch (Exception e) {
+                logger.error("Failed to teardown DynamoDB table '{}': ", tableName, e);
+                success = false;
+            }
+        }
+        return success;
+    }
+
+    private static boolean teardownProjectVpc(Ec2Client ec2Client) {
+        logger.info("Teardown Step 8: Searching for project VPC with tag {}:{}...", PROJECT_TAG_KEY, PROJECT_TAG_VALUE);
+        try {
+            DescribeVpcsResponse response = ec2Client.describeVpcs(DescribeVpcsRequest.builder()
+                    .filters(Filter.builder().name("tag:" + PROJECT_TAG_KEY).values(PROJECT_TAG_VALUE).build())
+                    .build());
+            
+            for (Vpc vpc : response.vpcs()) {
+                VpcManager.teardownVpc(ec2Client, vpc.vpcId());
+            }
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to teardown project VPC: ", e);
             return false;
         }
     }

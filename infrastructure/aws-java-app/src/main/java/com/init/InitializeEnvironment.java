@@ -24,6 +24,8 @@ import software.amazon.awssdk.services.cognitoidentity.CognitoIdentityClient;
 import software.amazon.awssdk.services.cognitoidentity.model.*;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
+import software.amazon.awssdk.services.ecr.EcrClient;
+import software.amazon.awssdk.services.ecr.model.*;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
@@ -70,6 +72,7 @@ public class InitializeEnvironment {
     private static final String COGNITO_POOL_NAME = "MessageOrderingIdentityPool";
     private static final String WEB_BUCKET_NAME_PREFIX = "message-ordering-web-";
     private static final String DYNAMODB_TABLE_NAME = "UserTelemetryAggregations";
+    private static final String ECR_REPOSITORY_NAME = "analytics-processor";
 
     private static final String PROJECT_TAG_KEY = "Project";
     private static final String PROJECT_TAG_VALUE = "class-project";
@@ -86,6 +89,7 @@ public class InitializeEnvironment {
              S3Client s3Client = S3Client.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
              CognitoIdentityClient cognitoClient = CognitoIdentityClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
              StsClient stsClient = StsClient.builder().region(Region.AWS_GLOBAL).credentialsProvider(ProfileCredentialsProvider.create()).build();
+             EcrClient ecrClient = EcrClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build();
              DynamoDbClient dynamoDbClient = DynamoDbClient.builder().region(Region.US_EAST_1).credentialsProvider(ProfileCredentialsProvider.create()).build()) {
 
             logger.info("AWS Clients initialized successfully.");
@@ -108,6 +112,12 @@ public class InitializeEnvironment {
             RetryExecutor.executeVoid(
                     () -> setupDynamoDB(dynamoDbClient),
                     "DynamoDB Setup",
+                    MAX_RETRY_ATTEMPTS
+            );
+
+            RetryExecutor.executeVoid(
+                    () -> setupECRRepository(ecrClient),
+                    "ECR Setup",
                     MAX_RETRY_ATTEMPTS
             );
 
@@ -342,28 +352,32 @@ public class InitializeEnvironment {
             eksClient.describeCluster(describeClusterRequest);
             logger.info("EKS Cluster '{}' already exists.", CLUSTER_NAME);
         } catch (software.amazon.awssdk.services.eks.model.ResourceNotFoundException e) {
-            logger.info("EKS Cluster not found. Identifying VPC and Subnets...");
+            logger.info("EKS Cluster not found. Identifying or creating project VPC...");
 
-            // Find default VPC and subnets
-            DescribeVpcsResponse vpcsResponse = ec2Client.describeVpcs();
-            Vpc defaultVpc = vpcsResponse.vpcs().stream()
-                    .filter(Vpc::isDefault)
-                    .findFirst()
-                    .orElseThrow(() -> new RuntimeException("No default VPC found"));
+            // 1. Check for existing project VPC
+            DescribeVpcsResponse vpcsResponse = ec2Client.describeVpcs(DescribeVpcsRequest.builder()
+                    .filters(Filter.builder().name("tag:" + PROJECT_TAG_KEY).values(PROJECT_TAG_VALUE).build())
+                    .build());
             
-            logger.info("Found default VPC: {}", defaultVpc.vpcId());
+            String vpcId;
+            if (!vpcsResponse.vpcs().isEmpty()) {
+                vpcId = vpcsResponse.vpcs().get(0).vpcId();
+                logger.info("Found existing project VPC: {}", vpcId);
+            } else {
+                vpcId = VpcManager.createEksVpc(ec2Client);
+            }
 
+            // 2. Identify subnets in that VPC
             DescribeSubnetsRequest subnetsRequest = DescribeSubnetsRequest.builder()
-                    .filters(Filter.builder().name("vpc-id").values(defaultVpc.vpcId()).build())
+                    .filters(Filter.builder().name("vpc-id").values(vpcId).build())
                     .build();
             DescribeSubnetsResponse subnetsResponse = ec2Client.describeSubnets(subnetsRequest);
             
             List<String> subnetIds = subnetsResponse.subnets().stream()
-                    .filter(subnet -> !"us-east-1e".equals(subnet.availabilityZone()))
                     .map(Subnet::subnetId)
                     .collect(Collectors.toList());
             
-            logger.info("Found {} subnets (excluding us-east-1e): {}", subnetIds.size(), subnetIds);
+            logger.info("Using subnets: {}", subnetIds);
 
             VpcConfigRequest vpcConfig = VpcConfigRequest.builder()
                     .subnetIds(subnetIds)
@@ -726,6 +740,24 @@ public class InitializeEnvironment {
         }
     }
 
+    private static void setupECRRepository(EcrClient ecrClient) {
+        logger.info("Setting up ECR Repository...");
+
+        try {
+            ecrClient.describeRepositories(DescribeRepositoriesRequest.builder()
+                    .repositoryNames(ECR_REPOSITORY_NAME)
+                    .build());
+            logger.info("ECR repository '{}' already exists.", ECR_REPOSITORY_NAME);
+        } catch (software.amazon.awssdk.services.ecr.model.RepositoryNotFoundException e) {
+            logger.info("Creating new ECR repository: {}", ECR_REPOSITORY_NAME);
+            ecrClient.createRepository(CreateRepositoryRequest.builder()
+                    .repositoryName(ECR_REPOSITORY_NAME)
+                    .tags(software.amazon.awssdk.services.ecr.model.Tag.builder().key(PROJECT_TAG_KEY).value(PROJECT_TAG_VALUE).build())
+                    .build());
+            logger.info("ECR repository creation initiated for '{}'.", ECR_REPOSITORY_NAME);
+        }
+    }
+
     private static void setupEC2Instances(Ec2Client ec2Client) {
         logger.info("Step 4: Setting up EC2 Instances (Producer & Consumer)...");
 
@@ -753,7 +785,7 @@ public class InitializeEnvironment {
             return;
         }
 
-        DescribeImagesRequest imagesRequest = DescribeImagesRequest.builder()
+        software.amazon.awssdk.services.ec2.model.DescribeImagesRequest imagesRequest = software.amazon.awssdk.services.ec2.model.DescribeImagesRequest.builder()
                 .owners("amazon")
                 .filters(
                         Filter.builder().name("name").values("al2023-ami-2023.*-x86_64").build(),
@@ -761,11 +793,11 @@ public class InitializeEnvironment {
                 )
                 .build();
         
-        DescribeImagesResponse imagesResponse = ec2Client.describeImages(imagesRequest);
+        software.amazon.awssdk.services.ec2.model.DescribeImagesResponse imagesResponse = ec2Client.describeImages(imagesRequest);
         String amiId = imagesResponse.images().stream()
                 .sorted((i1, i2) -> i2.creationDate().compareTo(i1.creationDate()))
                 .findFirst()
-                .map(Image::imageId)
+                .map(software.amazon.awssdk.services.ec2.model.Image::imageId)
                 .orElseThrow(() -> new RuntimeException("Could not find AL2023 AMI"));
 
         logger.info("Using latest Amazon Linux 2023 AMI: {}", amiId);

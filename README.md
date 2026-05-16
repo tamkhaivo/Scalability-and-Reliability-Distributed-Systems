@@ -32,15 +32,68 @@ Our project implements a large distributed, real-time event-processing pipeline 
 
 By leveraging Kinesis Shards, we address the numerical, geographical, and admin scale factor identified by Neuman. In our initial design phase, we hypothesized that vertical scaling increasing the CPU and RAM of our backend server nodes would be the most efficient way to handle traffic spikes due to the reduced overhead of internode communication; however, based on our research, we expect that a hybrid approach to scaling should outperform vertical scaling when under highly dynamic workloads. 
 
+## Deployment & Operations
+
+After the base infrastructure (EKS, Kinesis, DynamoDB) has been initialized, use the following commands to deploy the application components.
+
+### 1. Authenticate with AWS ECR
+Ensure your CLI is configured with the correct region (e.g., `us-east-1`).
+```bash
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 327444422515.dkr.ecr.us-east-1.amazonaws.com
+```
+
+### 2. Build the Application
+The analytics processor contains both the Aggregator and Worker logic, toggled via Spring Profiles.
+```bash
+cd server/analytics-processor
+mvn clean package -DskipTests
+```
+
+### 3. Build and Push Container Images
+Build for `linux/amd64` to ensure compatibility with EKS nodes.
+```bash
+docker build --platform linux/amd64 -t 327444422515.dkr.ecr.us-east-1.amazonaws.com/analytics-processor:latest .
+docker push 327444422515.dkr.ecr.us-east-1.amazonaws.com/analytics-processor:latest
+```
+
+### 4. Deploy to Kubernetes
+Apply the core services and deployments.
+```bash
+# Deploy Service Account and IAM Roles
+kubectl apply -f k8s/serviceaccount.yaml
+
+# Deploy the Aggregator (Ingestion API)
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/aggregator-deployment.yaml
+
+# Deploy the Workers
+kubectl apply -f k8s/worker-deployment.yaml
+```
+
+### 5. Verify Deployment
+```bash
+kubectl get pods -w
+kubectl logs -l app=dashboard-ingestion --tail=100
+kubectl logs -l app=analytics-worker --tail=100
+```
+
+### 6. Benchmarking & Scaling Tests
+We have included a dedicated suite to compare Horizontal (HPA) vs Vertical (VPA) scalability during traffic spikes.
+```bash
+# Run the 5-iteration master benchmark
+./stress-test/run_benchmark.sh
+```
+See `traffic-spikes/DEFINITIVE_BENCHMARK.md` for our research findings.
+
 ## Group Members Contributions 
 - **Tam Vo**: Drafted the Survey Paper, included related papers of [1,2,3], and contributed to the “Introduction", "literature review”, and “Discussion and areas of contribution” sections.
 - **Brendan Nichols**: Researched and found the papers relating to autoscaling [4, 5], and contributed to the “literature review” and “open areas of research” sections. 
 - **Craig Beaubien**: Contributed to the “open areas of research” section and edited for clarity.
 
 ## References 
-[1] B. C. Neuman, "Scale in Distributed Systems," IEEE Communications Magazine, vol. 32, no. 4, pp. 56-63, Apr. 1994. [Link](https://ptacts.uspto.gov/ptacts/public-informations/petitions/1549993/download-documents?artifactId=sB3eXOp8OG-3C5OY2yhfk2yRVEUUfHXkKTawM9RTGjygV3-0SRXm_CE)
-[2] T. Akidau et al., "MillWheel: Fault-Tolerant Stream Processing at Scale," Proceedings of the VLDB Endowment, vol. 6, no. 11, pp. 1128-1139, Aug. 2013. [Link](https://research.google.com/pubs/archive/41378.pdf)
-[3] A. Floratou et al., "Dhalion: Self-regulating Stream Processing in Heron," Proceedings of the VLDB Endowment, vol. 10, no. 12, pp. 1825-1836, Aug. 2017. [Link](https://dl.acm.org/doi/pdf/10.14778/3137765.3137786)
-[4] M.-N. Tran, D.-D. Vu, and Y. Kim, “A survey of autoscaling in kubernetes,” 2022 Thirteenth International Conference on Ubiquitous and Future Networks (ICUFN), pp. 263–265, Jul. 2022, doi: 10.1109/icufn55119.2022.9829572. [Link](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9829572)
-[5] D.-D. Vu, M.-N. Tran, and Y. Kim, “Predictive hybrid autoscaling for containerized applications,” IEEE Access, vol. 10, pp. 109768–109778, Jan. 2022, doi: 10.1109/access.2022.3214985. [Link](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9919851)
-[6] A. A. Khaleq and I. Ra, “Agnostic Approach for Microservices Autoscaling in Cloud Applications,” 2019 International Conference on Computational Science and Computational Intelligence (CSCI), Dec. 2019, doi: 10.1109/csci49370.2019.00264. [Link](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9070951)
+1. [1] B. C. Neuman, "Scale in Distributed Systems," IEEE Communications Magazine, vol. 32, no. 4, pp. 56-63, Apr. 1994. [Link](https://ptacts.uspto.gov/ptacts/public-informations/petitions/1549993/download-documents?artifactId=sB3eXOp8OG-3C5OY2yhfk2yRVEUUfHXkKTawM9RTGjygV3-0SRXm_CE)
+2. [2] T. Akidau et al., "MillWheel: Fault-Tolerant Stream Processing at Scale," Proceedings of the VLDB Endowment, vol. 6, no. 11, pp. 1128-1139, Aug. 2013. [Link](https://research.google.com/pubs/archive/41378.pdf)
+3. [3] A. Floratou et al., "Dhalion: Self-regulating Stream Processing in Heron," Proceedings of the VLDB Endowment, vol. 10, no. 12, pp. 1825-1836, Aug. 2017. [Link](https://dl.acm.org/doi/pdf/10.14778/3137765.3137786)
+4. [4] M.-N. Tran, D.-D. Vu, and Y. Kim, “A survey of autoscaling in kubernetes,” 2022 Thirteenth International Conference on Ubiquitous and Future Networks (ICUFN), pp. 263–265, Jul. 2022, doi: 10.1109/icufn55119.2022.9829572. [Link](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9829572)
+5. [5] D.-D. Vu, M.-N. Tran, and Y. Kim, “Predictive hybrid autoscaling for containerized applications,” IEEE Access, vol. 10, pp. 109768–109778, Jan. 2022, doi: 10.1109/access.2022.3214985. [Link](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9919851)
+6. [6] A. A. Khaleq and I. Ra, “Agnostic Approach for Microservices Autoscaling in Cloud Applications,” 2019 International Conference on Computational Science and Computational Intelligence (CSCI), Dec. 2019, doi: 10.1109/csci49370.2019.00264. [Link](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9070951)
