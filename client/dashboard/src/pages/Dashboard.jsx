@@ -1,5 +1,5 @@
 /*Brendan Nichols - CSC 258 Project Dashboard
-This is the Dashboard of our project which will eventually be able to show all kinds of analytics for the system.
+This is the Dashboard of our project which shows all kinds of analytics for the system. 
 It now polls DynamoDB for compiled analytics from the distributed backend.
 */
 import { useState, useEffect, useRef, useCallback } from "react";

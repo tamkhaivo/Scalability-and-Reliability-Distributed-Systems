@@ -87,8 +87,15 @@ See `traffic-spikes/DEFINITIVE_BENCHMARK.md` for our research findings.
 
 ## Group Members Contributions 
 - **Tam Vo**: Drafted the Survey Paper, included related papers of [1,2,3], and contributed to the “Introduction", "literature review”, and “Discussion and areas of contribution” sections.
-- **Brendan Nichols**: Researched and found the papers relating to autoscaling [4, 5], and contributed to the “literature review” and “open areas of research” sections. 
-- **Craig Beaubien**: Contributed to the “open areas of research” section and edited for clarity.
+- **Brendan Nichols**: For the Survey Paper, I researched and found the papers relating to autoscaling [4, 5], and contributed to the “literature review” and “open areas of research” sections. For the programming portion, I worked on the Dashboard analysis side in `client/dashboard`, where I set up its React framework, created its file structure, css, and page layout, and also contributed to the dashboard's ability to process and display data from the Kinesis Data Stream alongside Tam. 
+- **Craig Beaubien**
+    - Survey Paper
+        - I contributed to the “open areas of research” section
+        - edited for clarity.
+    - Development[^1]
+        - I built a React + Vite storefront demo in the `client/store_front` workspace that uses several UI packages for styling/animation. It will also record user mouse movements and send to AWS Kinesis.
+        - I wrote a standalone Python script that uses Selenium and ChromeDriver to automate browsing and generate high-frequency user-like events.
+[^1]:Complete detailed information [here](client/store_front/README.md)
 
 ## References 
 1. [1] B. C. Neuman, "Scale in Distributed Systems," IEEE Communications Magazine, vol. 32, no. 4, pp. 56-63, Apr. 1994. [Link](https://ptacts.uspto.gov/ptacts/public-informations/petitions/1549993/download-documents?artifactId=sB3eXOp8OG-3C5OY2yhfk2yRVEUUfHXkKTawM9RTGjygV3-0SRXm_CE)
