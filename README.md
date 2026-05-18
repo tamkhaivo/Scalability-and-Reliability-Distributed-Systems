@@ -86,8 +86,8 @@ We have included a dedicated suite to compare Horizontal (HPA) vs Vertical (VPA)
 See `traffic-spikes/DEFINITIVE_BENCHMARK.md` for our research findings.
 
 ## Group Members Contributions 
-- **Tam Vo**: Drafted the Survey Paper, included related papers of [1,2,3], and contributed to the “Introduction", "literature review”, and “Discussion and areas of contribution” sections.
-- **Brendan Nichols**: For the Survey Paper, I researched and found the papers relating to autoscaling [4, 5], and contributed to the “literature review” and “open areas of research” sections. For the programming portion, I worked on the Dashboard analysis side in `client/dashboard`, where I set up its React framework, created its file structure, css, and page layout, and also contributed to the dashboard's ability to process and display data from the Kinesis Data Stream alongside Tam. 
+- **Tam Vo**: Drafted the Survey Paper, included related papers of [1,2,3], and contributed to the “Introduction", "literature review”, and “Discussion and areas of contribution” sections. For our code development, I set up our AWS system including k8s, AWS security, and the Kinesis Data Stream itself. I was also in charge of stress testing the system, and helped ensure that both frontend pages connected to AWS properly.
+- **Brendan Nichols**: For the Survey Paper, I researched and found the papers relating to autoscaling [4, 5], and contributed to the “literature review” and “open areas of research” sections. For the programming portion, I worked on the Dashboard analysis side in `client/dashboard`, where I set up its React framework, created its file structure, css, and page layout, and also contributed to the dashboard's ability to process and display data from the Kinesis Data Stream with help from Tam. 
 - **Craig Beaubien**
     - Survey Paper
         - I contributed to the “open areas of research” section
